@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+
+import struct
+import logging
+from binascii import hexlify
+
+from rfspy import usb, radiocfg
+
+lvl = logging.INFO
+
+if not logging.root.handlers:
+    logging.basicConfig(level=lvl)
+
+log = logging.getLogger(name=__name__)
+
+
+class MutableRfcat(usb.RfcatUSB, radiocfg.RfcatRadioDescriptor):
+    def __init__(self, device, reset_on_exit=False):
+        usb.RfcatUSB.__init__(self, device, reset_on_exit)
+
+    def open(self):
+        super().open()
+        radiocfg.RfcatRadioDescriptor.__init__(self, self.get_radioconfig())
+
+    @radiocfg.RfcatRadioDescriptor.frequency.setter
+    def frequency(self, value):
+        memvalue = (value / 2.4e6) * 2 ** 16
+        regval = struct.pack("<I", int(memvalue))[:-1]
+        log.debug("setting frequency to %f Hz = 0x%s",
+                  value, hexlify(regval).decode('ascii'))
+        self.freq = regval
+        self._chip_set_frequency()
+
+
+rcm = usb.RfcatManager(factory=MutableRfcat)
+dongles = []
+for dongleobj in rcm.all_dongles():
+    with dongleobj as dongle:
+        print(f"dongle: {dongle}")
+        print(f"build: {dongle.get_buildinfo()}")
+        print(f"ping: {dongle.ping_util(times=1, interval=1.0)}")
+    dongles.append(dongle)
+    print()
